@@ -230,7 +230,13 @@ class StudentAuthController extends Controller
 
         $username = DB::table('students')->where('Username',$req->email)->count();
 
-        if($email > 0 || $username > 0)
+
+        $email_admin = DB::table('admins')->where('Email',$req->email)->count();
+
+        $username_admin = DB::table('admins')->where('Username',$req->email)->count();
+
+
+        if($email > 0 || $username > 0 || $email_admin > 0 || $username_admin > 0)
         {
             if($email > 0)
             {
@@ -241,40 +247,58 @@ class StudentAuthController extends Controller
                 $student = DB::table('students')->where('Username',$req->email)->first();
             }
 
-            if(Hash::check($req->password,$student->Password))
+            if($email_admin > 0)
             {
-                if($student->Verify == "Panding")
+                $admin = DB::table('admins')->where('Email',$req->email)->first();
+            }     
+            if($username_admin > 0)
+            {
+                $admin = DB::table('admins')->where('Username',$req->email)->first();
+            }
+
+            if($student){
+                if(Hash::check($req->password,$student->Password))
                 {
-                    $notification = array(
-                        'mess3' => 'Not Approve by Admin !',
+                    if($student->Verify == "Panding")
+                    {
+                        $notification = array(
+                            'mess3' => 'Not Approve by Admin !',
+                        
+                        );
+                        
+                        return back()->with($notification);
+                    }
+                    else if($student->Verify == "No")
+                    {
+                        $id = $student->id;
+
+                        $email_code=rand(1000,9999);
+
+                        $data=array();
+                        $data['Confirmation_Code']=$email_code;
+
+                        $update_code=DB::table('students')->where('id',$id)->update($data);
+
+                        $details = [
+                            'title' => 'Seminar Library Management System',
+                            'body' => 'Your verification code - '.$email_code
+                        ];
                     
-                    );
+                        Mail::to($req->email)->send(new \App\Mail\VerifyEmail($details));
                     
-                    return back()->with($notification);
+                        return Redirect::to('student/verify-email/'.$id);
+                    }
+                    else{
+                        Session::put('Student_ID',$student->id);
+                        return Redirect::to('/student/dashboard');
+                    }
                 }
-                else if($student->Verify == "No")
+            }elseif($admin){
+                if(Hash::check($req->password,$admin->Password) || $req->password==$admin->Password)
                 {
-                    $id = $student->id;
-
-                    $email_code=rand(1000,9999);
-
-                    $data=array();
-                    $data['Confirmation_Code']=$email_code;
-
-                    $update_code=DB::table('students')->where('id',$id)->update($data);
-
-                    $details = [
-                        'title' => 'Seminar Library Management System',
-                        'body' => 'Your verification code - '.$email_code
-                    ];
-                   
-                    Mail::to($req->email)->send(new \App\Mail\VerifyEmail($details));
-                   
-                    return Redirect::to('student/verify-email/'.$id);
-                }
-                else{
-                    Session::put('Student_ID',$student->id);
-                    return Redirect::to('/student/dashboard');
+                    Session::put('Admin_ID',$admin->id);
+                    
+                    return Redirect::to('/admin/dashboard');   
                 }
             }
             else{
@@ -295,6 +319,7 @@ class StudentAuthController extends Controller
             return back()->with($notification);
         }
     }
+    
     public function dashboard()
     {
         $student_status=Session::get('Student_ID');
